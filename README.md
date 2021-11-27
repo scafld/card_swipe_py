@@ -48,4 +48,8 @@ to start the trigger_publisher.py script and
 	
 to start the trigger subscriber that will control servo motion based on the received message. ‘Triggerer’ is used for testing and does not need to be run for real application.
 
+Two ros2 packages are on the RPi, one contains the rmf_door_msgs and the other is the one I created called card_swipe_py, which right now needs the rmf_door_msgs for message type definition. To run the test, firstly source the workspace with ‘source ~/ros_ws/install/setup.bash’. The ros distro is sourced automatically with ~/.bashrc.
+
+Once the workspace is sourced you can simply run ‘ros2 run card_swipe_py triggerer’ to start the trigger_publisher.py script and ‘ros2 run card_swipe_py swiper’ to start the trigger subscriber that will control servo motion based on the received message.
+
 Currently the ‘triggerer’ publishes the DoorMode message with DoorMode.value of 2 and 1 intermittently. Value 2 makes the servo swipe back and forth at a reasonable speed using a sine wave control signal, and value 1 makes the servo return to default position.
