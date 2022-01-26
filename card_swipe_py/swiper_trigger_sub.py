@@ -1,3 +1,5 @@
+import sys
+import signal
 import math
 from time import sleep
 from threading import Thread, Lock
@@ -35,19 +37,19 @@ from rmf_door_msgs.msg import DoorRequest
 #   value: 0 - close / 2 - open
 
 class Swipe(Node):
-    def __init__(self):
-        super().__init__("icu1_sliding_door_controller")
+    def __init__(self, door_name):
+        self.door_name = door_name
+        super().__init__(self.door_name)
         self.fac = fac()
         self.servo = Servo(
             17,
             pin_factory=self.fac,
-            min_pulse_width=1.0 / 1000,
+            min_pulse_width=1.25 / 1000,
             max_pulse_width=2.0 / 1000,
         )
 
         self.servo.min()
-        
-        self.get_logger().info('Initializing ...')
+        self.get_logger().info('Initializing the door opener "{0}" ...'.format(self.door_name))
 
         # Initialize mutex for safe management of door msgs
         self.door_state_mutex = Lock()
@@ -55,7 +57,7 @@ class Swipe(Node):
 
         # Initialize the door state
         self.door_state_msg = DoorState()
-        self.door_state_msg.door_name = "icu1_sliding_door"
+        self.door_state_msg.door_name = self.door_name
         self.door_state_msg.current_mode = DoorMode()
         self.door_state_msg.current_mode.value = 0
 
@@ -69,6 +71,7 @@ class Swipe(Node):
 
         # Set up the servo control thread
         self.get_logger().info('Starting the servo control thread ...')
+        self.spin_the_thread = True
         self.servo_control_thread = Thread(target=self.servo_control_loop)
         self.servo_control_thread.start()
 
@@ -88,7 +91,14 @@ class Swipe(Node):
     def close_the_door(self):
         return self.door_request_msg.requested_mode.value == 0
 
+    def stop(self):
+        self.spin_the_thread = False
+
     def door_requests_callback(self, msg):
+        if msg.door_name != self.door_name:
+            self.get_logger().info('Door request not addressed to this ({0}) door'.format(self.door_name))
+            return
+
         self.door_request_mutex.acquire()
         self.door_request_msg = msg
         self.door_request_mutex.release()
@@ -101,7 +111,7 @@ class Swipe(Node):
         self.door_state_mutex.release()
 
     def servo_control_loop(self):
-        while rclpy.ok():
+        while self.spin_the_thread:
             if self.open_the_door() and self.get_door_state() == 0:
                 self.get_logger().info("Opening the door ...")
                 self.set_door_state(1)
@@ -124,11 +134,25 @@ class Swipe(Node):
                 self.set_door_state(0)
                 self.get_logger().info("The door is closed")
             
+            print ("in thread")
             sleep(0.5)
 
 def main(args=None):
+    # Check if the door name argument has been provided
+    if len(sys.argv) < 2:
+        print ("The name of the door must be provided as an argument. Exiting.")
+        return
+
     rclpy.init(args=args)
-    swipe = Swipe()
+    swipe = Swipe(sys.argv[1])
+
+    # Attach a custom singnal handler because rclpy.ok() is not enough to stop a thread
+    def signal_handler(sig, frame):
+        swipe.stop()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+
     rclpy.spin(swipe)
     rclpy.shutdown()
     swipe.servo_control_thread.join()
